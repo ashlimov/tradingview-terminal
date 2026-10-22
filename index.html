@@ -65,6 +65,7 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
+      position: relative;
     }
 
     label {
@@ -86,11 +87,65 @@
       border-color: var(--accent-color);
     }
 
+    /* Autocomplete Results Box */
+    .search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1e222d;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      max-height: 250px;
+      overflow-y: auto;
+      z-index: 100;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .search-item {
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+    }
+
+    .search-item:hover {
+      background: #2a2e39;
+    }
+
+    .search-item .symbol {
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .search-item .desc {
+      font-size: 0.8rem;
+      color: #787b86;
+    }
+
+    .search-item .exchange {
+      font-size: 0.75rem;
+      background: #2a2e39;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #2962ff;
+    }
+
     /* Watchlist Table */
     .watchlist {
       margin-top: 10px;
       border-top: 1px solid var(--border-color);
       padding-top: 10px;
+    }
+
+    .watchlist-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
     }
 
     .watchlist-table {
@@ -108,6 +163,11 @@
     .watchlist-table tr:hover {
       background-color: #2a2e39;
       cursor: pointer;
+    }
+
+    .time-tag {
+      font-size: 0.7rem;
+      color: #787b86;
     }
 
     .chart-container {
@@ -129,12 +189,13 @@
 
     <div class="grid-container">
       <div class="sidebar">
-        <h3>Поиск и Поток Котировок</h3>
+        <h3>Поиск и Глобальный Каталог</h3>
         
-        <!-- Поиск по названию или тикеру -->
+        <!-- Поиск по всем возможным биржам и ассетам -->
         <div class="form-group">
-          <label for="symbolSearch">Поиск акции по названию / тикеру</label>
-          <input type="text" id="symbolSearch" placeholder="Например: AAPL, Tesla, NVDA..." oninput="filterWatchlist()">
+          <label for="symbolSearch">Глобальный поиск (все рынки & акции)</label>
+          <input type="text" id="symbolSearch" placeholder="Введите тикер или имя (напр. AAPL, Sber, Tesla)..." oninput="handleGlobalSearch(this.value)" autocomplete="off">
+          <div id="searchResults" class="search-results"></div>
         </div>
 
         <div class="form-group">
@@ -147,41 +208,21 @@
           </select>
         </div>
 
-        <!-- Столбец / Список тикеров -->
+        <!-- Быстрый поиск: Акции за последние 3 дня -->
         <div class="watchlist">
-          <label>Быстрый выбор (Тикер / Компания)</label>
+          <div class="watchlist-header">
+            <label>История активности (за последние 3 дня)</label>
+          </div>
           <table class="watchlist-table">
             <thead>
               <tr>
                 <th>Тикер</th>
-                <th>Компания</th>
+                <th>Описание / Биржа</th>
+                <th>Время</th>
               </tr>
             </thead>
-            <tbody id="watchlistBody">
-              <tr onclick="loadSymbol('NASDAQ:AAPL')">
-                <td><strong>AAPL</strong></td>
-                <td>Apple Inc.</td>
-              </tr>
-              <tr onclick="loadSymbol('NASDAQ:NVDA')">
-                <td><strong>NVDA</strong></td>
-                <td>NVIDIA Corp.</td>
-              </tr>
-              <tr onclick="loadSymbol('NASDAQ:TSLA')">
-                <td><strong>TSLA</strong></td>
-                <td>Tesla, Inc.</td>
-              </tr>
-              <tr onclick="loadSymbol('NASDAQ:MSFT')">
-                <td><strong>MSFT</strong></td>
-                <td>Microsoft Corp.</td>
-              </tr>
-              <tr onclick="loadSymbol('BINANCE:BTCUSDT')">
-                <td><strong>BTCUSDT</strong></td>
-                <td>Bitcoin / USDT</td>
-              </tr>
-              <tr onclick="loadSymbol('FX:EURUSD')">
-                <td><strong>EURUSD</strong></td>
-                <td>Euro / US Dollar</td>
-              </tr>
+            <tbody id="historyBody">
+              <!-- Динамически заполняется через JS -->
             </tbody>
           </table>
         </div>
@@ -198,6 +239,14 @@
     let tvWidget = null;
     let currentSymbol = "NASDAQ:AAPL";
     let currentInterval = "D";
+    let searchDebounce = null;
+
+    // Инициализация истории из localStorage при загрузке
+    let historyData = JSON.parse(localStorage.getItem('tv_history_3days')) || [
+      { symbol: "NASDAQ:AAPL", name: "Apple Inc.", exchange: "NASDAQ", timestamp: Date.now() },
+      { symbol: "NASDAQ:NVDA", name: "NVIDIA Corp.", exchange: "NASDAQ", timestamp: Date.now() - 3600000 },
+      { symbol: "BINANCE:BTCUSDT", name: "Bitcoin / USDT", exchange: "BINANCE", timestamp: Date.now() - 86400000 }
+    ];
 
     function initWidget(symbol, interval) {
       tvWidget = new TradingView.widget({
@@ -210,7 +259,7 @@
         "locale": "ru",
         "toolbar_bg": "#f1f3f6",
         "enable_publishing": false,
-        "allow_symbol_change": true, // Разрешает встроенный поиск внутри графика
+        "allow_symbol_change": true,
         "container_id": "tv_chart_container",
         "studies": [
           "RSI@tv-basicstudies",
@@ -219,9 +268,73 @@
       });
     }
 
-    function loadSymbol(symbol) {
+    // Добавление тикера в историю за последние 3 дня (72 часа)
+    function trackSymbolUsage(symbol, name, exchange) {
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+
+      // Удаляем старые записи (> 3 дней)
+      historyData = historyData.filter(item => (now - item.timestamp) <= THREE_DAYS_MS);
+
+      // Проверяем, есть ли уже такой тикер, и обновляем время
+      const existingIdx = historyData.findIndex(item => item.symbol === symbol);
+      if (existingIdx !== -1) {
+        historyData[existingIdx].timestamp = now;
+      } else {
+        historyData.unshift({ symbol, name: name || symbol, exchange: exchange || '', timestamp: now });
+      }
+
+      // Сохраняем в localStorage
+      localStorage.setItem('tv_history_3days', JSON.stringify(historyData));
+      renderHistoryTable();
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('historyBody');
+      tbody.innerHTML = '';
+
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      
+      // Фильтрация за 3 дня
+      const recentItems = historyData.filter(item => (now - item.timestamp) <= THREE_DAYS_MS);
+
+      if (recentItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#787b86;">История пуста</td></tr>';
+        return;
+      }
+
+      recentItems.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.onclick = () => loadSymbol(item.symbol, item.name, item.exchange);
+
+        const timeAgo = getTimeAgo(item.timestamp);
+        const cleanTicker = item.symbol.includes(':') ? item.symbol.split(':')[1] : item.symbol;
+
+        tr.innerHTML = `
+          <td><strong>${cleanTicker}</strong></td>
+          <td>${item.name} <span style="font-size:0.7rem; color:#2962ff;">${item.exchange}</span></td>
+          <td class="time-tag">${timeAgo}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function getTimeAgo(timestamp) {
+      const diffMin = Math.floor((Date.now() - timestamp) / 60000);
+      if (diffMin < 60) return `${diffMin}м назад`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours}ч назад`;
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays}д назад`;
+    }
+
+    function loadSymbol(symbol, name, exchange) {
       currentSymbol = symbol;
+      trackSymbolUsage(symbol, name, exchange);
       initWidget(currentSymbol, currentInterval);
+      document.getElementById('searchResults').style.display = 'none';
+      document.getElementById('symbolSearch').value = '';
     }
 
     function changeTimeframe(interval) {
@@ -229,29 +342,58 @@
       initWidget(currentSymbol, currentInterval);
     }
 
-    function filterWatchlist() {
-      const input = document.getElementById('symbolSearch').value.toUpperCase();
-      const rows = document.getElementById('watchlistBody').getElementsByTagName('tr');
+    // Глобальный поиск через API TradingView Symbol Search
+    function handleGlobalSearch(query) {
+      clearTimeout(searchDebounce);
+      const resultsContainer = document.getElementById('searchResults');
 
-      for (let i = 0; i < rows.length; i++) {
-        const tickerCell = rows[i].getElementsByTagName('td')[0];
-        const nameCell = rows[i].getElementsByTagName('td')[1];
-        
-        if (tickerCell || nameCell) {
-          const tickerText = tickerCell.textContent || tickerCell.innerText;
-          const nameText = nameCell.textContent || nameCell.innerText;
-          
-          if (tickerText.toUpperCase().indexOf(input) > -1 || nameText.toUpperCase().indexOf(input) > -1) {
-            rows[i].style.display = "";
-          } else {
-            rows[i].style.display = "none";
-          }
-        }
+      if (!query || query.trim().length < 1) {
+        resultsContainer.style.display = 'none';
+        return;
       }
+
+      searchDebounce = setTimeout(() => {
+        fetch(`https://symbol-search.tradingview.com/symbol_search/?text=${encodeURIComponent(query)}&type=`)
+          .then(res => res.json())
+          .then(data => {
+            resultsContainer.innerHTML = '';
+            if (!data || data.length === 0) {
+              resultsContainer.innerHTML = '<div class="search-item"><span class="desc">Ничего не найдено</span></div>';
+            } else {
+              data.slice(0, 10).forEach(item => {
+                const fullSymbol = `${item.exchange}:${item.symbol}`;
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                div.onclick = () => loadSymbol(fullSymbol, item.description, item.exchange);
+                div.innerHTML = `
+                  <div>
+                    <span class="symbol">${item.symbol}</span>
+                    <span class="desc"> — ${item.description || item.symbol}</span>
+                  </div>
+                  <span class="exchange">${item.exchange}</span>
+                `;
+                resultsContainer.appendChild(div);
+              });
+            }
+            resultsContainer.style.display = 'block';
+          })
+          .catch(err => {
+            console.error('Ошибка при поиске:', err);
+          });
+      }, 250);
     }
 
-    // Инициализация при загрузке страницы
+    // Закрытие выпадушки при клике вне поля поиска
+    document.addEventListener('click', function(e) {
+      const searchBox = document.getElementById('symbolSearch');
+      const resultsContainer = document.getElementById('searchResults');
+      if (e.target !== searchBox && !resultsContainer.contains(e.target)) {
+        resultsContainer.style.display = 'none';
+      }
+    });
+
     window.onload = function() {
+      renderHistoryTable();
       initWidget(currentSymbol, currentInterval);
     };
   </script>
