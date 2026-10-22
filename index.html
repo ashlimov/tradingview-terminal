@@ -65,7 +65,6 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
-      position: relative;
     }
 
     label {
@@ -73,7 +72,7 @@
       color: #787b86;
     }
 
-    input, select {
+    select {
       padding: 10px;
       background: #131722;
       border: 1px solid var(--border-color);
@@ -82,56 +81,9 @@
       font-size: 0.9rem;
     }
 
-    input:focus {
+    select:focus {
       outline: none;
       border-color: var(--accent-color);
-    }
-
-    /* Autocomplete Results Box */
-    .search-results {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: #1e222d;
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      max-height: 250px;
-      overflow-y: auto;
-      z-index: 100;
-      display: none;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    }
-
-    .search-item {
-      padding: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--border-color);
-      cursor: pointer;
-    }
-
-    .search-item:hover {
-      background: #2a2e39;
-    }
-
-    .search-item .symbol {
-      font-weight: bold;
-      color: #fff;
-    }
-
-    .search-item .desc {
-      font-size: 0.8rem;
-      color: #787b86;
-    }
-
-    .search-item .exchange {
-      font-size: 0.75rem;
-      background: #2a2e39;
-      padding: 2px 6px;
-      border-radius: 3px;
-      color: #2962ff;
     }
 
     /* Watchlist Table */
@@ -189,15 +141,8 @@
 
     <div class="grid-container">
       <div class="sidebar">
-        <h3>Поиск и Глобальный Каталог</h3>
+        <h3>Панель управления</h3>
         
-        <!-- Поиск по всем возможным биржам и ассетам -->
-        <div class="form-group">
-          <label for="symbolSearch">Глобальный поиск (все рынки & акции)</label>
-          <input type="text" id="symbolSearch" placeholder="Введите тикер или имя (напр. AAPL, Sber, Tesla)..." oninput="handleGlobalSearch(this.value)" autocomplete="off">
-          <div id="searchResults" class="search-results"></div>
-        </div>
-
         <div class="form-group">
           <label for="timeframeSelect">Таймфрейм графика</label>
           <select id="timeframeSelect" onchange="changeTimeframe(this.value)">
@@ -239,7 +184,6 @@
     let tvWidget = null;
     let currentSymbol = "NASDAQ:AAPL";
     let currentInterval = "D";
-    let searchDebounce = null;
 
     // Инициализация истории из localStorage при загрузке
     let historyData = JSON.parse(localStorage.getItem('tv_history_3days')) || [
@@ -259,7 +203,7 @@
         "locale": "ru",
         "toolbar_bg": "#f1f3f6",
         "enable_publishing": false,
-        "allow_symbol_change": true,
+        "allow_symbol_change": true, // Поиск символов встроен прямо в сам график TradingView
         "container_id": "tv_chart_container",
         "studies": [
           "RSI@tv-basicstudies",
@@ -333,64 +277,12 @@
       currentSymbol = symbol;
       trackSymbolUsage(symbol, name, exchange);
       initWidget(currentSymbol, currentInterval);
-      document.getElementById('searchResults').style.display = 'none';
-      document.getElementById('symbolSearch').value = '';
     }
 
     function changeTimeframe(interval) {
       currentInterval = interval;
       initWidget(currentSymbol, currentInterval);
     }
-
-    // Глобальный поиск через API TradingView Symbol Search
-    function handleGlobalSearch(query) {
-      clearTimeout(searchDebounce);
-      const resultsContainer = document.getElementById('searchResults');
-
-      if (!query || query.trim().length < 1) {
-        resultsContainer.style.display = 'none';
-        return;
-      }
-
-      searchDebounce = setTimeout(() => {
-        fetch(`https://symbol-search.tradingview.com/symbol_search/?text=${encodeURIComponent(query)}&type=`)
-          .then(res => res.json())
-          .then(data => {
-            resultsContainer.innerHTML = '';
-            if (!data || data.length === 0) {
-              resultsContainer.innerHTML = '<div class="search-item"><span class="desc">Ничего не найдено</span></div>';
-            } else {
-              data.slice(0, 10).forEach(item => {
-                const fullSymbol = `${item.exchange}:${item.symbol}`;
-                const div = document.createElement('div');
-                div.className = 'search-item';
-                div.onclick = () => loadSymbol(fullSymbol, item.description, item.exchange);
-                div.innerHTML = `
-                  <div>
-                    <span class="symbol">${item.symbol}</span>
-                    <span class="desc"> — ${item.description || item.symbol}</span>
-                  </div>
-                  <span class="exchange">${item.exchange}</span>
-                `;
-                resultsContainer.appendChild(div);
-              });
-            }
-            resultsContainer.style.display = 'block';
-          })
-          .catch(err => {
-            console.error('Ошибка при поиске:', err);
-          });
-      }, 250);
-    }
-
-    // Закрытие выпадушки при клике вне поля поиска
-    document.addEventListener('click', function(e) {
-      const searchBox = document.getElementById('symbolSearch');
-      const resultsContainer = document.getElementById('searchResults');
-      if (e.target !== searchBox && !resultsContainer.contains(e.target)) {
-        resultsContainer.style.display = 'none';
-      }
-    });
 
     window.onload = function() {
       renderHistoryTable();
