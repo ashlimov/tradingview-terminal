@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quant Terminal & TradingView Integration</title>
+  <style>
+    :root {
+      --bg-color: #131722;
+      --card-bg: #1e222d;
+      --text-color: #d1d4dc;
+      --accent-color: #2962ff;
+      --border-color: #2a2e39;
+      --green: #089981;
+      --red: #f23645;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 15px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin: 0;
+      color: #ffffff;
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+    }
+
+    .sidebar {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 20px;
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 0.85rem;
+      color: #787b86;
+    }
+
+    input, select {
+      padding: 10px;
+      background: #131722;
+      border: 1px solid var(--border-color);
+      color: #fff;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent-color);
+    }
+
+    /* Watchlist Table */
+    .watchlist {
+      margin-top: 10px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+    }
+
+    .watchlist-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .watchlist-table th, .watchlist-table td {
+      padding: 8px 4px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .watchlist-table tr:hover {
+      background-color: #2a2e39;
+      cursor: pointer;
+    }
+
+    .chart-container {
+      background: var(--card-bg);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      height: 750px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Quant Strategy & TradingView Charting Terminal</h1>
+      <span style="color: var(--green);">● Active Connection</span>
+    </header>
+
+    <div class="grid-container">
+      <div class="sidebar">
+        <h3>Поиск и Поток Котировок</h3>
+        
+        <!-- Поиск по названию или тикеру -->
+        <div class="form-group">
+          <label for="symbolSearch">Поиск акции по названию / тикеру</label>
+          <input type="text" id="symbolSearch" placeholder="Например: AAPL, Tesla, NVDA..." oninput="filterWatchlist()">
+        </div>
+
+        <div class="form-group">
+          <label for="timeframeSelect">Таймфрейм графика</label>
+          <select id="timeframeSelect" onchange="changeTimeframe(this.value)">
+            <option value="D" selected>1 День (1-Day)</option>
+            <option value="60">1 Час</option>
+            <option value="240">4 Часа</option>
+            <option value="W">1 Неделя</option>
+          </select>
+        </div>
+
+        <!-- Столбец / Список тикеров -->
+        <div class="watchlist">
+          <label>Быстрый выбор (Тикер / Компания)</label>
+          <table class="watchlist-table">
+            <thead>
+              <tr>
+                <th>Тикер</th>
+                <th>Компания</th>
+              </tr>
+            </thead>
+            <tbody id="watchlistBody">
+              <tr onclick="loadSymbol('NASDAQ:AAPL')">
+                <td><strong>AAPL</strong></td>
+                <td>Apple Inc.</td>
+              </tr>
+              <tr onclick="loadSymbol('NASDAQ:NVDA')">
+                <td><strong>NVDA</strong></td>
+                <td>NVIDIA Corp.</td>
+              </tr>
+              <tr onclick="loadSymbol('NASDAQ:TSLA')">
+                <td><strong>TSLA</strong></td>
+                <td>Tesla, Inc.</td>
+              </tr>
+              <tr onclick="loadSymbol('NASDAQ:MSFT')">
+                <td><strong>MSFT</strong></td>
+                <td>Microsoft Corp.</td>
+              </tr>
+              <tr onclick="loadSymbol('BINANCE:BTCUSDT')">
+                <td><strong>BTCUSDT</strong></td>
+                <td>Bitcoin / USDT</td>
+              </tr>
+              <tr onclick="loadSymbol('FX:EURUSD')">
+                <td><strong>EURUSD</strong></td>
+                <td>Euro / US Dollar</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- График TradingView Advanced Chart -->
+      <div class="chart-container" id="tv_chart_container"></div>
+    </div>
+  </div>
+
+  <!-- Подключение официального API TradingView -->
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <script type="text/javascript">
+    let tvWidget = null;
+    let currentSymbol = "NASDAQ:AAPL";
+    let currentInterval = "D";
+
+    function initWidget(symbol, interval) {
+      tvWidget = new TradingView.widget({
+        "autosize": true,
+        "symbol": symbol,
+        "interval": interval,
+        "timezone": "Etc/UTC",
+        "theme": "dark",
+        "style": "1",
+        "locale": "ru",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "allow_symbol_change": true, // Разрешает встроенный поиск внутри графика
+        "container_id": "tv_chart_container",
+        "studies": [
+          "RSI@tv-basicstudies",
+          "STD;EMA"
+        ]
+      });
+    }
+
+    function loadSymbol(symbol) {
+      currentSymbol = symbol;
+      initWidget(currentSymbol, currentInterval);
+    }
+
+    function changeTimeframe(interval) {
+      currentInterval = interval;
+      initWidget(currentSymbol, currentInterval);
+    }
+
+    function filterWatchlist() {
+      const input = document.getElementById('symbolSearch').value.toUpperCase();
+      const rows = document.getElementById('watchlistBody').getElementsByTagName('tr');
+
+      for (let i = 0; i < rows.length; i++) {
+        const tickerCell = rows[i].getElementsByTagName('td')[0];
+        const nameCell = rows[i].getElementsByTagName('td')[1];
+        
+        if (tickerCell || nameCell) {
+          const tickerText = tickerCell.textContent || tickerCell.innerText;
+          const nameText = nameCell.textContent || nameCell.innerText;
+          
+          if (tickerText.toUpperCase().indexOf(input) > -1 || nameText.toUpperCase().indexOf(input) > -1) {
+            rows[i].style.display = "";
+          } else {
+            rows[i].style.display = "none";
+          }
+        }
+      }
+    }
+
+    // Инициализация при загрузке страницы
+    window.onload = function() {
+      initWidget(currentSymbol, currentInterval);
+    };
+  </script>
+
+</body>
+</html>
